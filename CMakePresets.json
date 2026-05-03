@@ -1,0 +1,28 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "wsl-gcc",
+      "displayName": "WSL GCC",
+      "description": "Configure OrderMatch with GCC inside WSL.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      },
+      "environment": {
+        "CC": "gcc",
+        "CXX": "g++"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "wsl-gcc",
+      "displayName": "WSL GCC",
+      "configurePreset": "wsl-gcc"
+    }
+  ]
+}

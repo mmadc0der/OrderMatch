@@ -9,6 +9,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(BUILD_GMOCK OFF CACHE BOOL "Disable GoogleMock for OrderMatch" FORCE)
+set(INSTALL_GTEST OFF CACHE BOOL "Disable GoogleTest install rules" FORCE)
+
+add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
+
 add_library(ordermatch_core STATIC
     src/core/order_book.cpp
     src/core/matching_engine.cpp
@@ -58,4 +63,14 @@ target_link_libraries(ordermatch_server
 
 add_executable(ordermatch_client
     src/client/main.cpp
+)
+
+add_executable(ordermatch_tests
+    tests/order_book_tests.cpp
+)
+
+target_link_libraries(ordermatch_tests
+    PRIVATE
+        ordermatch_core
+        GTest::gtest_main
 )
