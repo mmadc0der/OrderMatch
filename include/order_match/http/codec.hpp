@@ -1,5 +1,6 @@
 #pragma once
 
+#include "order_match/core/instrument.hpp"
 #include "order_match/engine/event.hpp"
 
 #include <string_view>
@@ -13,7 +14,8 @@ struct DecodeResult {
 
 [[nodiscard]] DecodeResult decode_request(std::string_view method,
                                           std::string_view target,
-                                          std::string_view body);
+                                          std::string_view body,
+                                          const core::InstrumentConfig& instrument);
 
 [[nodiscard]] std::string_view encode_result_code(engine::ResultCode result) noexcept;
 

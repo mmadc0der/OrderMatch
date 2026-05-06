@@ -13,6 +13,7 @@ set(BUILD_GMOCK OFF CACHE BOOL "Disable GoogleMock for OrderMatch" FORCE)
 set(INSTALL_GTEST OFF CACHE BOOL "Disable GoogleTest install rules" FORCE)
 
 add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
+find_package(Threads REQUIRED)
 
 add_library(ordermatch_core STATIC
     src/core/order_book.cpp
@@ -26,6 +27,7 @@ target_include_directories(ordermatch_core
 
 add_library(ordermatch_engine STATIC
     src/engine/engine_runner.cpp
+    src/engine/engine_runtime.cpp
 )
 
 target_include_directories(ordermatch_engine
@@ -36,6 +38,7 @@ target_include_directories(ordermatch_engine
 target_link_libraries(ordermatch_engine
     PUBLIC
         ordermatch_core
+        Threads::Threads
 )
 
 add_library(ordermatch_http STATIC
@@ -67,15 +70,14 @@ add_executable(ordermatch_client
 
 add_executable(ordermatch_tests
     tests/order_book_tests.cpp
+    tests/engine_runtime_tests.cpp
+    tests/http_codec_tests.cpp
 )
 
 target_link_libraries(ordermatch_tests
     PRIVATE
         ordermatch_core
+        ordermatch_engine
+        ordermatch_http
         GTest::gtest_main
 )
-find_package(Threads REQUIRED)
-    src/engine/engine_runtime.cpp
-        Threads::Threads
-    tests/engine_runtime_tests.cpp
-        ordermatch_engine
