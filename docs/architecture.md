@@ -103,7 +103,7 @@ constexpr QuantityUnits unpack_quantity(PriceQuantity value) noexcept {
 
 This also gives the decode layer one explicit place to reject values that exceed the configured tick or unit range before they reach the engine.
 
-Core resting orders should stay as small as possible. User identity, account identity, and ownership metadata do not belong in the matching-core order object. The engine can associate an `OrderId` with user/account metadata outside the core when a future authenticated transport exists. At the core level, `OrderId` is enough identity to cancel, match, and report.
+Core active orders should stay as small as possible. User identity, account identity, and ownership metadata do not belong in the matching-core order object. The engine can associate an `OrderId` with user/account metadata outside the core when a future authenticated transport exists. At the core level, `OrderId` is enough identity to cancel, match, and report active liquidity.
 
 Resting-order side and any other order attributes that must survive submission should be stored as a compact bitmap, not as several independent enum fields:
 
@@ -160,8 +160,8 @@ Submit lifecycle:
 Cancel lifecycle:
 
 1. Transport maps `DELETE /orders/{id}` to a cancel event carrying the target `OrderId`.
-2. The engine cancels only if the target order is currently resting.
-3. Cancel responses report cancelled, not found, or terminal state without exposing core internals.
+2. The matching core cancels only if the target order is currently active in the book.
+3. If the order is not active, the core returns `not_found` and does not distinguish whether it was filled, cancelled, expired, or never existed.
 
 Thin client identity is allowed at the transport/engine boundary through an opaque uid returned by `POST /register`. Future user/account ownership belongs in an engine-side order registry keyed by `OrderId`, not in core `Order`. See `accounting.md`.
 
@@ -233,6 +233,8 @@ The engine component owns the mutable state boundary:
 - It publishes execution reports.
 - It owns the live `BookView` and publishes bounded read copies for selected read-only HTTP paths.
 
+The matching core underneath that engine is limited to active-liquidity state, price-time matching, cancellation of active orders, and compact snapshots of active levels.
+
 The engine is synchronous internally by design. This keeps order mutation deterministic and avoids locks inside the order book.
 
 ## Matching Core
@@ -241,10 +243,10 @@ V1 matching should support:
 
 - Limit orders.
 - Market orders.
-- Cancel orders.
+- Cancel orders for active liquidity only.
 - Price-time priority.
 - FIFO within the same price level.
-- Compact book snapshots.
+- Compact book snapshots of active liquidity.
 
 Core invariants:
 
@@ -254,6 +256,51 @@ Core invariants:
 - Earlier orders at the same price must match before later orders.
 - Market orders must never rest.
 - Rejected input must not mutate book state.
+- Absence from the active-order map means the core does not own terminal lifecycle history for that order.
+
+## Core Call Sequence
+
+The synchronous core path should stay simple and explicit. For V1, the working order flow is:
+
+```mermaid
+sequenceDiagram
+    participant Caller as EngineOrTest
+    participant Book as OrderBook
+
+    Caller->>Book: submit(limit or market)
+    Book->>Book: validate request shape and instrument bounds
+    Book->>Book: determine opposite-side liquidity
+    alt FOK and insufficient liquidity
+        Book-->>Caller: rejected
+    else accepted
+        Book->>Book: assign OrderId and sequence slot
+        Book->>Book: match against opposite book levels
+        alt limit with residual and GTC
+            Book->>Book: rest residual on active side
+        else market or non-resting submit
+            Book->>Book: do not rest residual
+        end
+        Book-->>Caller: SubmitResult with fills and residual facts
+    end
+
+    Caller->>Book: cancel(order_id)
+    Book->>Book: look up active order by id
+    alt order is active
+        Book->>Book: remove active order from queues and map
+        Book-->>Caller: CancelResult(cancelled)
+    else order is not active
+        Book-->>Caller: CancelResult(not_found)
+    end
+```
+
+Practical rules for the current core API:
+
+- `submit()` is the only entry point for market and limit order processing.
+- Market orders may match, but they never rest.
+- Limit GTC orders may match and then rest any residual quantity.
+- Limit IOC orders may match, but they never rest residual quantity.
+- Limit FOK orders either fully match or reject before state mutation.
+- `cancel()` only targets active resting liquidity already in the book.
 
 ## Read-Only And Fast Paths
 

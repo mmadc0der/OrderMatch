@@ -22,6 +22,12 @@ enum class TimeInForce : std::uint8_t {
     fok = 2U,
 };
 
+enum class SubmitRejectReason : std::uint8_t {
+    none = 0U,
+    invalid_request = 1U,
+    insufficient_liquidity = 2U,
+};
+
 namespace order_flags {
 inline constexpr OrderFlags side_sell = 1U << 0U;  // Unset means buy.
 }  // namespace order_flags
@@ -69,12 +75,13 @@ struct SubmitResult {
     QuantityUnits matched_quantity{};
     QuantityUnits resting_quantity{};
     SequenceNumber sequence{};
+    SubmitRejectReason reject_reason{SubmitRejectReason::none};
+    std::vector<Trade> fills{};
 };
 
 enum class CancelStatus : std::uint8_t {
     cancelled = 0U,
     not_found = 1U,
-    already_terminal = 2U,
 };
 
 struct CancelResult {

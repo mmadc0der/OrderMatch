@@ -10,12 +10,12 @@ Enterprise-grade here means small surface area, explicit ownership boundaries, d
 
 ## Current State
 
-The repository already has the intended module split and several domain types, but the runtime behavior is still mostly scaffolding.
+The repository already has the intended module split and several domain types, and the matching core now performs deterministic active-liquidity matching.
 
-- The matching core types exist, but the book logic is not yet a working engine.
+- The matching core book logic is working, but the surrounding engine/reporting layers still do not consume its facts end-to-end.
 - The engine layer has shapes for events, reports, and read views, but not the full data flow.
 - The HTTP layer and server entry points are placeholders, not a complete API implementation.
-- Uid registration, ownership tracking, queue backpressure, and tests are still missing.
+- Uid registration, ownership tracking, queue backpressure, and broader integration coverage are still missing.
 
 That means the architecture docs describe the target contract, while this file should be read as the current-state gap analysis.
 
@@ -57,7 +57,7 @@ The system should fail cleanly rather than cleverly.
 
 These are the concrete gaps that need work before the architecture claims become real.
 
-1. Build the core matching logic and book state transitions.
+1. Wire the engine/reporting layer to the core operation facts and fills.
 2. Populate execution reports with real fill and residual data.
 3. Implement codec and domain mapping for REST requests and responses.
 4. Wire the event bus and backpressure behavior into the engine runner.
