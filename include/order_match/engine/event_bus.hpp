@@ -22,6 +22,7 @@ public:
     [[nodiscard]] bool wait_pop(Event& event);
     void close() noexcept;
     [[nodiscard]] std::size_t capacity() const noexcept;
+    [[nodiscard]] std::size_t available_capacity() const noexcept;
 
 private:
     mutable std::mutex mutex_{};
@@ -90,6 +91,12 @@ void EventBus<Event>::close() noexcept {
 template <typename Event>
 std::size_t EventBus<Event>::capacity() const noexcept {
     return capacity_;
+}
+
+template <typename Event>
+std::size_t EventBus<Event>::available_capacity() const noexcept {
+    std::scoped_lock lock(mutex_);
+    return capacity_ - queue_.size();
 }
 
 }  // namespace order_match::engine

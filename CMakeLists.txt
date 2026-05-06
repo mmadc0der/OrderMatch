@@ -72,6 +72,7 @@ add_executable(ordermatch_tests
     tests/order_book_tests.cpp
     tests/engine_runtime_tests.cpp
     tests/http_codec_tests.cpp
+    tests/http_pipeline_tests.cpp
 )
 
 target_link_libraries(ordermatch_tests

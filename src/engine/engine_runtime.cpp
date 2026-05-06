@@ -167,6 +167,22 @@ bool EngineRuntime::running() const noexcept {
     return running_.load(std::memory_order_acquire);
 }
 
+BookViewSnapshot EngineRuntime::bake_book_view(const core::DepthLimit depth) const {
+    return runner_.bake_book_view(depth);
+}
+
+TopOfBookView EngineRuntime::top_of_book() const noexcept {
+    return runner_.top_of_book();
+}
+
+std::size_t EngineRuntime::inbound_capacity() const noexcept {
+    return inbound_bus_.capacity();
+}
+
+std::size_t EngineRuntime::inbound_available() const noexcept {
+    return inbound_bus_.available_capacity();
+}
+
 void EngineRuntime::coordinator_loop() {
     while (running_.load(std::memory_order_acquire)) {
         InboundJobPtr job{};

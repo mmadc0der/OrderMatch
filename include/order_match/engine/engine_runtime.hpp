@@ -34,6 +34,10 @@ public:
     [[nodiscard]] bool post_core_agnostic(EngineTask task);
     void stop() noexcept;
     [[nodiscard]] bool running() const noexcept;
+    [[nodiscard]] BookViewSnapshot bake_book_view(core::DepthLimit depth) const;
+    [[nodiscard]] TopOfBookView top_of_book() const noexcept;
+    [[nodiscard]] std::size_t inbound_capacity() const noexcept;
+    [[nodiscard]] std::size_t inbound_available() const noexcept;
 
 private:
     struct QueuedTask {
