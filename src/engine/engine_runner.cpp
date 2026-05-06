@@ -85,6 +85,9 @@ ExecutionReport EngineRunner::process(const InboundEvent& event) {
         report.result = cancel.status == core::CancelStatus::cancelled ? result_code::ok : result_code::not_found;
         report.leaves_quantity = 0U;
         report.cumulative_quantity = 0U;
+        if (cancel.status == core::CancelStatus::cancelled) {
+            book_view_.publish(engine_.book().snapshot(max_book_depth));
+        }
         return report;
     }
 
@@ -105,6 +108,9 @@ ExecutionReport EngineRunner::process(const InboundEvent& event) {
     report.fills.reserve(submit.fills.size());
     for (const auto& fill : submit.fills) {
         report.fills.push_back(to_execution_fill(fill));
+    }
+    if (submit.accepted) {
+        book_view_.publish(engine_.book().snapshot(max_book_depth));
     }
 
     return report;

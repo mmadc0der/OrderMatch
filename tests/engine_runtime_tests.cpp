@@ -71,6 +71,70 @@ TEST(EngineRunnerTest, ProcessesSubmitAndCancel) {
     EXPECT_EQ(cancel.leaves_quantity, 0U);
 }
 
+TEST(EngineRunnerTest, PublishesBookViewAfterAcceptedSubmit) {
+    EngineRunner runner{};
+
+    const auto submit = runner.process(make_submit_event(13U, 0U, static_cast<EventFlags>(event_flags::side_sell), 101U, 5U));
+    const auto top = runner.top_of_book();
+    const auto snapshot = runner.bake_book_view(10U);
+
+    EXPECT_EQ(submit.result, result_code::ok);
+    EXPECT_EQ(top.sequence, submit.sequence);
+    EXPECT_EQ(top.best_bid, 0U);
+    EXPECT_EQ(top.best_ask, pack_price_quantity(101U, 5U));
+    EXPECT_EQ(snapshot.sequence, submit.sequence);
+    ASSERT_EQ(snapshot.asks.size(), 1U);
+    EXPECT_EQ(snapshot.asks.front().price_quantity, pack_price_quantity(101U, 5U));
+    EXPECT_EQ(snapshot.asks.front().order_count, 1U);
+    EXPECT_TRUE(snapshot.bids.empty());
+}
+
+TEST(EngineRunnerTest, ClipsPublishedBookViewDepth) {
+    EngineRunner runner{};
+
+    const auto bid_1 = runner.process(make_submit_event(14U, 0U, 0U, 100U, 4U));
+    const auto bid_2 = runner.process(make_submit_event(15U, 0U, 0U, 99U, 3U));
+    const auto ask_1 = runner.process(make_submit_event(16U, 0U, static_cast<EventFlags>(event_flags::side_sell), 110U, 2U));
+    const auto ask_2 = runner.process(make_submit_event(17U, 0U, static_cast<EventFlags>(event_flags::side_sell), 111U, 1U));
+    const auto depth_1 = runner.bake_book_view(1U);
+    const auto depth_0 = runner.bake_book_view(0U);
+
+    EXPECT_EQ(bid_1.result, result_code::ok);
+    EXPECT_EQ(bid_2.result, result_code::ok);
+    EXPECT_EQ(ask_1.result, result_code::ok);
+    EXPECT_EQ(ask_2.result, result_code::ok);
+    ASSERT_EQ(depth_1.bids.size(), 1U);
+    ASSERT_EQ(depth_1.asks.size(), 1U);
+    EXPECT_EQ(depth_1.bids.front().price_quantity, pack_price_quantity(100U, 4U));
+    EXPECT_EQ(depth_1.asks.front().price_quantity, pack_price_quantity(110U, 2U));
+    EXPECT_EQ(depth_0.sequence, depth_1.sequence);
+    EXPECT_TRUE(depth_0.bids.empty());
+    EXPECT_TRUE(depth_0.asks.empty());
+}
+
+TEST(EngineRunnerTest, RejectedMutationsDoNotChangePublishedView) {
+    EngineRunner runner{};
+
+    const auto accepted = runner.process(make_submit_event(18U, 0U, 0U, 100U, 5U));
+    const auto before = runner.bake_book_view(10U);
+    const auto rejected = runner.process(make_submit_event(19U, 0U, 0U, 100U, 0U));
+    const auto after = runner.bake_book_view(10U);
+    const auto missing_cancel = runner.process(make_cancel_event(20U, 999U));
+    const auto after_cancel = runner.bake_book_view(10U);
+
+    EXPECT_EQ(accepted.result, result_code::ok);
+    EXPECT_EQ(rejected.result, result_code::invalid_quantity);
+    EXPECT_EQ(before.sequence, after.sequence);
+    EXPECT_EQ(after.sequence, after_cancel.sequence);
+    ASSERT_EQ(before.bids.size(), after.bids.size());
+    ASSERT_EQ(after.bids.size(), after_cancel.bids.size());
+    ASSERT_EQ(before.bids.size(), 1U);
+    EXPECT_EQ(before.bids.front().price_quantity, pack_price_quantity(100U, 5U));
+    EXPECT_EQ(after.bids.front().price_quantity, pack_price_quantity(100U, 5U));
+    EXPECT_EQ(after_cancel.bids.front().price_quantity, pack_price_quantity(100U, 5U));
+    EXPECT_EQ(missing_cancel.result, result_code::not_found);
+}
+
 TEST(EngineRuntimeTest, ProcessesInboundEventsThroughCoreLane) {
     EngineRuntime runtime{16U, 16U, 16U, 1U};
 
