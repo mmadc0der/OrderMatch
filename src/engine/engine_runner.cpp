@@ -83,6 +83,7 @@ ExecutionReport EngineRunner::process(const InboundEvent& event) {
         report.order_id = cancel.order_id;
         report.sequence = cancel.sequence;
         report.result = cancel.status == core::CancelStatus::cancelled ? result_code::ok : result_code::not_found;
+        report.status = cancel.status == core::CancelStatus::cancelled ? ExecutionStatus::cancelled : ExecutionStatus::none;
         report.leaves_quantity = 0U;
         report.cumulative_quantity = 0U;
         if (cancel.status == core::CancelStatus::cancelled) {
@@ -103,6 +104,8 @@ ExecutionReport EngineRunner::process(const InboundEvent& event) {
     report.order_id = submit.order_id;
     report.sequence = submit.sequence;
     report.result = submit.accepted ? result_code::ok : map_submit_reject(submit.reject_reason);
+    report.status = submit.accepted ? (submit.resting ? ExecutionStatus::resting : ExecutionStatus::filled)
+                                    : ExecutionStatus::none;
     report.cumulative_quantity = submit.matched_quantity;
     report.leaves_quantity = submit.resting_quantity;
     report.fills.reserve(submit.fills.size());

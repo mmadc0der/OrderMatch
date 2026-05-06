@@ -7,6 +7,13 @@
 
 namespace order_match::engine {
 
+enum class ExecutionStatus : std::uint8_t {
+    none = 0U,
+    resting = 1U,
+    filled = 2U,
+    cancelled = 3U,
+};
+
 struct ExecutionFill {
     core::OrderId taker_order_id{};
     core::OrderId maker_order_id{};
@@ -21,6 +28,7 @@ struct ExecutionReport {
     core::QuantityUnits leaves_quantity{};
     core::SequenceNumber sequence{};
     ResultCode result{result_code::ok};
+    ExecutionStatus status{ExecutionStatus::none};
     std::vector<ExecutionFill> fills{};
 };
 

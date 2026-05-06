@@ -1,5 +1,6 @@
 #include "order_match/http/codec.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <cstddef>
 #include <cctype>
@@ -256,6 +257,174 @@ template <typename UnsignedT>
     return true;
 }
 
+[[nodiscard]] std::string_view encode_execution_status(const engine::ExecutionStatus status) noexcept {
+    switch (status) {
+    case engine::ExecutionStatus::resting:
+        return "resting";
+    case engine::ExecutionStatus::filled:
+        return "filled";
+    case engine::ExecutionStatus::cancelled:
+        return "cancelled";
+    case engine::ExecutionStatus::none:
+    default:
+        return "none";
+    }
+}
+
+template <typename UnsignedT>
+void append_unsigned(std::string& out, const UnsignedT value) {
+    out += std::to_string(value);
+}
+
+template <typename UnsignedT>
+void append_decimal(std::string& out, const UnsignedT value, const UnsignedT scale) {
+    if (scale == 0U) {
+        out += "0";
+        return;
+    }
+
+    const auto whole = value / scale;
+    const auto fraction = value % scale;
+    out += std::to_string(whole);
+    if (scale == 1U) {
+        return;
+    }
+
+    const auto places = decimal_places(scale);
+    const auto fraction_text = std::to_string(fraction);
+    out.push_back('.');
+    if (fraction_text.size() < places) {
+        out.append(places - fraction_text.size(), '0');
+    }
+    out += fraction_text;
+}
+
+void append_json_string(std::string& out, std::string_view value) {
+    out.push_back('"');
+    for (const char ch : value) {
+        switch (ch) {
+        case '\\':
+            out += "\\\\";
+            break;
+        case '"':
+            out += "\\\"";
+            break;
+        case '\b':
+            out += "\\b";
+            break;
+        case '\f':
+            out += "\\f";
+            break;
+        case '\n':
+            out += "\\n";
+            break;
+        case '\r':
+            out += "\\r";
+            break;
+        case '\t':
+            out += "\\t";
+            break;
+        default:
+            out.push_back(ch);
+            break;
+        }
+    }
+    out.push_back('"');
+}
+
+void append_field_prefix(std::string& out, bool& first) {
+    if (!first) {
+        out.push_back(',');
+    }
+    first = false;
+}
+
+template <typename UnsignedT>
+void append_uint_field(std::string& out, std::string_view key, UnsignedT value, bool& first) {
+    append_field_prefix(out, first);
+    append_json_string(out, key);
+    out.push_back(':');
+    append_unsigned(out, value);
+}
+
+void append_string_field(std::string& out, std::string_view key, std::string_view value, bool& first) {
+    append_field_prefix(out, first);
+    append_json_string(out, key);
+    out.push_back(':');
+    append_json_string(out, value);
+}
+
+void append_bool_field(std::string& out, std::string_view key, bool value, bool& first) {
+    append_field_prefix(out, first);
+    append_json_string(out, key);
+    out.push_back(':');
+    out += value ? "true" : "false";
+}
+
+template <typename UnsignedT>
+void append_decimal_string_field(std::string& out,
+                                 std::string_view key,
+                                 UnsignedT value,
+                                 UnsignedT scale,
+                                 bool& first) {
+    append_field_prefix(out, first);
+    append_json_string(out, key);
+    out.push_back(':');
+    out.push_back('"');
+    append_decimal(out, value, scale);
+    out.push_back('"');
+}
+
+void append_fill(std::string& out, const engine::ExecutionFill& fill, const core::InstrumentConfig& instrument) {
+    out.push_back('{');
+    bool first = true;
+    append_uint_field(out, "maker_order_id", fill.maker_order_id, first);
+    append_uint_field(out, "taker_order_id", fill.taker_order_id, first);
+    append_decimal_string_field(out,
+                                "price",
+                                core::unpack_price(fill.price_quantity),
+                                instrument.price_scale == 0U ? 1U : instrument.price_scale,
+                                first);
+    append_decimal_string_field(out,
+                                "quantity",
+                                core::unpack_quantity(fill.price_quantity),
+                                instrument.quantity_scale == 0U ? 1U : instrument.quantity_scale,
+                                first);
+    append_uint_field(out, "sequence", fill.sequence, first);
+    out.push_back('}');
+}
+
+void append_level(std::string& out, const engine::BookLevelView& level, const core::InstrumentConfig& instrument) {
+    out.push_back('{');
+    bool first = true;
+    append_decimal_string_field(out,
+                                "price",
+                                core::unpack_price(level.price_quantity),
+                                instrument.price_scale == 0U ? 1U : instrument.price_scale,
+                                first);
+    append_decimal_string_field(out,
+                                "quantity",
+                                core::unpack_quantity(level.price_quantity),
+                                instrument.quantity_scale == 0U ? 1U : instrument.quantity_scale,
+                                first);
+    append_uint_field(out, "order_count", level.order_count, first);
+    out.push_back('}');
+}
+
+template <typename Levels>
+void append_levels(std::string& out, std::string_view key, const Levels& levels, const core::InstrumentConfig& instrument) {
+    append_json_string(out, key);
+    out.push_back(':');
+    out.push_back('[');
+    for (std::size_t index = 0U; index < levels.size(); ++index) {
+        if (index != 0U) {
+            out.push_back(',');
+        }
+        append_level(out, levels[index], instrument);
+    }
+    out.push_back(']');
+}
+
 }  // namespace
 
 DecodeResult decode_request(std::string_view method,
@@ -306,6 +475,93 @@ std::string_view encode_result_code(const engine::ResultCode result) noexcept {
         default:
             return "unknown";
     }
+}
+
+std::string encode_execution_report(const engine::ExecutionReport& report,
+                                    const core::InstrumentConfig& instrument) {
+    std::string json{};
+    json.push_back('{');
+    bool first = true;
+    append_uint_field(json, "request_id", report.request_id, first);
+    append_string_field(json, "result", encode_result_code(report.result), first);
+    append_uint_field(json, "order_id", report.order_id, first);
+    append_string_field(json, "status", encode_execution_status(report.status), first);
+    append_decimal_string_field(json,
+                                "cumulative_quantity",
+                                report.cumulative_quantity,
+                                instrument.quantity_scale == 0U ? 1U : instrument.quantity_scale,
+                                first);
+    append_decimal_string_field(json,
+                                "leaves_quantity",
+                                report.leaves_quantity,
+                                instrument.quantity_scale == 0U ? 1U : instrument.quantity_scale,
+                                first);
+    append_uint_field(json, "sequence", report.sequence, first);
+    append_field_prefix(json, first);
+    append_json_string(json, "fills");
+    json.push_back(':');
+    json.push_back('[');
+    for (std::size_t index = 0U; index < report.fills.size(); ++index) {
+        if (index != 0U) {
+            json.push_back(',');
+        }
+        append_fill(json, report.fills[index], instrument);
+    }
+    json.push_back(']');
+    json.push_back('}');
+    return json;
+}
+
+std::string encode_book_snapshot(const engine::BookViewSnapshot& snapshot,
+                                 const core::DepthLimit depth,
+                                 const core::InstrumentConfig& instrument) {
+    std::string json{};
+    json.push_back('{');
+    bool first = true;
+    append_uint_field(json, "sequence", snapshot.sequence, first);
+    append_uint_field(json, "depth", depth, first);
+    append_field_prefix(json, first);
+    append_levels(json, "bids", snapshot.bids, instrument);
+    json.push_back(',');
+    append_levels(json, "asks", snapshot.asks, instrument);
+    json.push_back('}');
+    return json;
+}
+
+std::string encode_health_response(const bool ready,
+                                   std::string_view engine_state,
+                                   const std::size_t inbound_capacity,
+                                   const std::size_t inbound_available,
+                                   const core::SequenceNumber sequence) {
+    std::string json{};
+    json.push_back('{');
+    bool first = true;
+    append_bool_field(json, "ready", ready, first);
+    append_string_field(json, "engine", engine_state, first);
+    append_field_prefix(json, first);
+    append_json_string(json, "inbound_queue");
+    json.push_back(':');
+    json.push_back('{');
+    bool queue_first = true;
+    append_uint_field(json, "capacity", inbound_capacity, queue_first);
+    append_uint_field(json, "available", inbound_available, queue_first);
+    json.push_back('}');
+    append_uint_field(json, "sequence", sequence, first);
+    json.push_back('}');
+    return json;
+}
+
+std::string encode_error_response(const core::RequestId request_id,
+                                  const engine::ResultCode result,
+                                  std::string_view message) {
+    std::string json{};
+    json.push_back('{');
+    bool first = true;
+    append_uint_field(json, "request_id", request_id, first);
+    append_string_field(json, "result", encode_result_code(result), first);
+    append_string_field(json, "message", message, first);
+    json.push_back('}');
+    return json;
 }
 
 }  // namespace order_match::http
