@@ -74,3 +74,8 @@ target_link_libraries(ordermatch_tests
         ordermatch_core
         GTest::gtest_main
 )
+find_package(Threads REQUIRED)
+    src/engine/engine_runtime.cpp
+        Threads::Threads
+    tests/engine_runtime_tests.cpp
+        ordermatch_engine

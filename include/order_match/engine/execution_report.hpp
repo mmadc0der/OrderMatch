@@ -3,7 +3,7 @@
 #include "order_match/core/order.hpp"
 #include "order_match/engine/event.hpp"
 
-#include <span>
+#include <vector>
 
 namespace order_match::engine {
 
@@ -21,7 +21,7 @@ struct ExecutionReport {
     core::QuantityUnits leaves_quantity{};
     core::SequenceNumber sequence{};
     ResultCode result{result_code::ok};
-    std::span<const ExecutionFill> fills{};
+    std::vector<ExecutionFill> fills{};
 };
 
 }  // namespace order_match::engine
